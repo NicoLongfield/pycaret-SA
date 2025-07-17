@@ -221,9 +221,9 @@ class SurvScorer(_Scorer):
         prob_time = np.linspace(lower+diff, upper-diff, len(y_time), endpoint=False)
 
         if self._score_func.__name__ == "concordance_index_censored":
-            # scores = self._score_func(np.array(y).astype(np.bool), y_time, estimate, tied_tol=1e-8)
+            # scores = self._score_func(np.array(y).astype(bool), y_time, estimate, tied_tol=1e-8)
             # score = scores[0]
-            score = method_caller(estimator, "score", X, np.array(y).astype(np.bool))
+            score = estimator.score(X, np.array(y).astype(bool))
 
         elif self._score_func.__name__ == "concordance_index_ipcw":
             scores = self._score_func(survival_train, survival_test, estimate, tau=None, tied_tol=1e-8)
@@ -274,12 +274,12 @@ class SkSurvScoreFuncPatch:
 
     def __call__(self, y_test, y_train, X_train, X_test, target, **kwargs):
         y_time = X_test["time"].values.ravel()
-        survival_train = Surv.from_arrays(event=np.array(y_train).astype(np.bool), time=X_train["time"].values.ravel())
-        survival_test = Surv.from_arrays(event=np.array(y_test).astype(np.bool), time=y_time)
+        survival_train = Surv.from_arrays(event=np.array(y_train).astype(bool), time=X_train["time"].values.ravel())
+        survival_test = Surv.from_arrays(event=np.array(y_test).astype(bool), time=y_time)
 
         if self.is_cindex_censored:
-            y = np.array(y_test).astype(np.bool)
-            scores = self._score_func(np.array(y).astype(np.bool), y_time, target)
+            y = np.array(y_test).astype(bool)
+            scores = self._score_func(np.array(y).astype(bool), y_time, target)
             score = scores[0]
         else:
             if self.need_survival_function==False:

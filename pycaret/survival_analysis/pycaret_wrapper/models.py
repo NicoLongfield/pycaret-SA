@@ -254,7 +254,7 @@ class IPCRidgeWrapper(IPCRidge):
     """
 
     def __init__(self, alpha=1.0, fit_intercept=True, normalize="deprecated",
-                 copy_X=True, max_iter=None, tol=1e-3, solver="auto"):
+                 copy_X=True, max_iter=None, tol=1e-3, solver="auto", **kwargs):
         self.alpha = alpha
         self.fit_intercept = fit_intercept
         self.normalize = normalize
@@ -262,6 +262,7 @@ class IPCRidgeWrapper(IPCRidge):
         self.max_iter = max_iter
         self.tol = tol
         self.solver = solver
+        # Ignore any additional keyword arguments passed by PyCaret
         super(IPCRidge, self).__init__()
 
     def fit(self, X: pd.DataFrame, y: pd.DataFrame):
@@ -379,7 +380,7 @@ class CoxPHWrapper(CoxPHSurvivalAnalysis):
            Journal of the American Statistical Association 72 (1977): 557–565.
     """
 
-    def __init__(self, alpha: float = 0.00001, ties: str = "breslow", n_iter: int = 100, tol: float = 1e-9, verbose: int = 0):
+    def __init__(self, alpha: float = 0.00001, ties: str = "breslow", n_iter: int = 100, tol: float = 1e-9, verbose: int = 0, **kwargs):
         self.alpha = alpha
         self.ties = ties
         self.n_iter = n_iter

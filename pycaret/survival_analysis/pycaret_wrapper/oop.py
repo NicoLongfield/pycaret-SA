@@ -1145,6 +1145,10 @@ class SurvivalExperiment(_SupervisedExperiment, Preprocessor):
         self._all_models, self._all_models_internal = self._get_models()
         self._all_metrics = self._get_metrics()
 
+        # Initialize containers
+        self._master_model_container = []
+        self._display_container = []
+
         runtime = np.array(time.time() - runtime_start).round(2)
         self._set_up_logging(
             runtime,
@@ -1395,7 +1399,8 @@ class SurvivalExperiment(_SupervisedExperiment, Preprocessor):
 
         self.logger.info("Starting cross validation")
 
-        n_jobs = self._gpu_n_jobs_param
+        # n_jobs = self._gpu_n_jobs_param
+        n_jobs = self.n_jobs_param
         from sklearn.gaussian_process import (
             GaussianProcessClassifier,
             GaussianProcessRegressor,
@@ -1830,12 +1835,12 @@ class SurvivalExperiment(_SupervisedExperiment, Preprocessor):
         if not self._ml_usecase == MLUsecase.TIME_SERIES:
             model_results.drop("cutoff", axis=1, inplace=True, errors="ignore")
 
-        self.display_container.append(model_results)
+        self._display_container.append(model_results)
 
-        # storing results in master_model_container
+        # storing results in _master_model_container
         if add_to_model_list:
             self.logger.info("Uploading model into container now")
-            self.master_model_container.append(
+            self._master_model_container.append(
                 {"model": model, "scores": model_results, "cv": cv}
             )
 
@@ -1846,8 +1851,8 @@ class SurvivalExperiment(_SupervisedExperiment, Preprocessor):
         if system:
             display.display(model_results)
 
-        self.logger.info(f"master_model_container: {len(self.master_model_container)}")
-        self.logger.info(f"display_container: {len(self.display_container)}")
+        self.logger.info(f"_master_model_container: {len(self._master_model_container)}")
+        self.logger.info(f"_display_container: {len(self._display_container)}")
 
         self.logger.info(str(model))
         self.logger.info(
