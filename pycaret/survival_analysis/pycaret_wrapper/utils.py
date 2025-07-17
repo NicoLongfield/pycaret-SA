@@ -1,28 +1,15 @@
-# Copyright (C) 2019-2024 PyCaret
-# Author: Moez Ali (moez.ali@queensu.ca)
-# Contributors (https://github.com/pycaret/pycaret/graphs/contributors)
-# License: MIT
-
-
 import functools
 import inspect
-import traceback
-import warnings
-from collections.abc import Callable, Mapping
 from copy import deepcopy
-from enum import Enum, auto
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
 import pandas as pd
 import pandas.io.formats.style
 from scipy import sparse
-from sklearn.metrics import get_scorer
-from sklearn.metrics._scorer import _Scorer
 from sklearn.model_selection import BaseCrossValidator, KFold, StratifiedKFold
 from sklearn.model_selection._split import _BaseKFold
 
-import pycaret.containers
 from pycaret.internal.logging import get_logger
 from pycaret.internal.validation import (
     is_sklearn_cv_generator,
@@ -31,37 +18,8 @@ from pycaret.internal.validation import (
 )
 from pycaret.utils._dependencies import _check_soft_dependencies
 
-if TYPE_CHECKING:
-    from pycaret.internal.pycaret_experiment.pycaret_experiment import (
-        _PyCaretExperiment,
-    )
-
-
-class MLUsecase(Enum):
-    CLASSIFICATION = auto()
-    REGRESSION = auto()
-    SURVIVAL_ANALYSIS = auto()
-    CLUSTERING = auto()
-    ANOMALY = auto()
-    TIME_SERIES = auto()
-
-
-def get_ml_task(y):
-    c1 = y.dtype == "int64"
-    c2 = y.nunique() <= 20
-    c3 = y.dtype.name in ["object", "bool", "category"]
-    if (c1 & c2) | c3:
-        ml_usecase = MLUsecase.CLASSIFICATION
-    else:
-        ml_usecase = MLUsecase.REGRESSION
-    return ml_usecase
-
-
-def highlight_setup(column):
-    return [
-        "background-color: lightgreen" if v is True or v == "Yes" else ""
-        for v in column
-    ]
+DATAFRAME_LIKE = Union[dict, list, tuple, np.ndarray, sparse.spmatrix, pd.DataFrame]
+TARGET_LIKE = Union[int, str, list, tuple, np.ndarray, pd.Series]
 
 
 def get_classification_task(y):
@@ -112,13 +70,14 @@ def to_df(data, index=None, columns=None, dtypes=None):
             if dtypes is not None:
                 data = data.astype(dtypes)
 
-        # Convert all column names to str
-        data = data.rename(columns=lambda col: str(col))
+        else:
+            # Convert all column names to str
+            data.columns = [str(col) for col in data.columns]
 
     return data
 
 
-def to_series(data, index=None, name=None):
+def to_series(data, index=None, name="target"):
     """Convert a column to pd.Series.
 
     Parameters
@@ -129,8 +88,8 @@ def to_series(data, index=None, name=None):
     index: sequence or Index, optional (default=None)
         Values for the indices.
 
-    name: string, optional (default=None)
-        Name of the target column. If None, defaults to "target".
+    name: string, optional (default="target")
+        Name of the target column.
 
     Returns
     -------
@@ -138,7 +97,6 @@ def to_series(data, index=None, name=None):
         Transformed series.
 
     """
-    name = name or "target"
     if data is not None and not isinstance(data, pd.Series):
         if isinstance(data, pd.DataFrame):
             try:
@@ -206,6 +164,7 @@ def variable_return(X, y):
 
 
 def get_config(variable: str, globals_d: dict):
+
     """
     This function is used to access global environment variables.
 
@@ -213,7 +172,7 @@ def get_config(variable: str, globals_d: dict):
     -------
     >>> X_train = get_config('X_train')
 
-    This will return training features.
+    This will return X_train transformed dataset.
 
     Returns
     -------
@@ -230,7 +189,7 @@ def get_config(variable: str, globals_d: dict):
     logger.info("Initializing get_config()")
     logger.info(f"get_config({function_params_str})")
 
-    if variable not in globals_d["pycaret_globals"]:
+    if not variable in globals_d["pycaret_globals"]:
         raise ValueError(
             f"Variable {variable} not found. Possible variables are: {globals_d['pycaret_globals']}"
         )
@@ -239,13 +198,14 @@ def get_config(variable: str, globals_d: dict):
 
     logger.info(f"Global variable: {variable} returned as {global_var}")
     logger.info(
-        "get_config() successfully completed......................................"
+        "get_config() succesfully completed......................................"
     )
 
     return global_var
 
 
 def set_config(variable: str, value, globals_d: dict):
+
     """
     This function is used to reset global environment variables.
 
@@ -269,7 +229,7 @@ def set_config(variable: str, value, globals_d: dict):
     if variable.startswith("_"):
         raise ValueError(f"Variable {variable} is read only ('_' prefix).")
 
-    if variable not in globals_d["pycaret_globals"] or variable == "pycaret_globals":
+    if not variable in globals_d["pycaret_globals"] or variable == "pycaret_globals":
         raise ValueError(
             f"Variable {variable} not found. Possible variables are: {globals_d['pycaret_globals']}"
         )
@@ -278,11 +238,11 @@ def set_config(variable: str, value, globals_d: dict):
 
     # special case
     if not globals_d["gpu_param"] and variable == "n_jobs_param":
-        globals_d["gpu_n_jobs_param"] = value
+        globals_d["_gpu_n_jobs_param"] = value
 
     logger.info(f"Global variable: {variable} updated to {value}")
     logger.info(
-        "set_config() successfully completed......................................"
+        "set_config() succesfully completed......................................"
     )
 
 
@@ -312,8 +272,8 @@ def save_config(file_name: str, globals_d: dict):
         "_all_models",
         "_all_models_internal",
         "_all_metrics",
-        "_master_model_container",
-        "_display_container",
+        "master_model_container",
+        "display_container",
     }
 
     globals_to_dump = {
@@ -328,13 +288,13 @@ def save_config(file_name: str, globals_d: dict):
 
     logger.info(f"Global variables dumped to {file_name}")
     logger.info(
-        "save_config() successfully completed......................................"
+        "save_config() succesfully completed......................................"
     )
 
 
 def load_config(file_name: str, globals_d: dict):
     """
-    This function is used to load environment variables from file created with save_config(),
+    This function is used to load enviroment variables from file created with save_config(),
     allowing to later resume modeling without rerunning setup().
 
 
@@ -342,7 +302,7 @@ def load_config(file_name: str, globals_d: dict):
     -------
     >>> load_config('myvars.pkl')
 
-    This will load all environment variables from 'myvars.pkl'.
+    This will load all enviroment variables from 'myvars.pkl'.
 
     """
 
@@ -369,7 +329,7 @@ def load_config(file_name: str, globals_d: dict):
     logger.info(f"Global variables set to match those in {file_name}")
 
     logger.info(
-        "load_config() successfully completed......................................"
+        "load_config() succesfully completed......................................"
     )
 
 
@@ -383,7 +343,7 @@ def color_df(
 
 
 def get_model_id(
-    e, all_models: Dict[str, "pycaret.containers.models.ModelContainer"]
+    e, all_models: Dict[str, "pycaret_local.containers.models.base_model.ModelContainer"]
 ) -> str:
     from pycaret.internal.meta_estimators import get_estimator_from_meta_estimator
 
@@ -399,7 +359,7 @@ def get_model_id(
 
 def get_model_name(
     e,
-    all_models: Dict[str, "pycaret.containers.models.ModelContainer"],
+    all_models: Dict[str, "pycaret_local.containers.models.base_model.ModelContainer"],
     deep: bool = True,
 ) -> str:
     all_models = all_models or {}
@@ -421,7 +381,7 @@ def get_model_name(
                     e = params["estimator"]
                 else:
                     break
-        if e is None or isinstance(e, str):
+        if e is None:
             e = old_e
         model_id = get_model_id(e, all_models)
 
@@ -430,18 +390,18 @@ def get_model_name(
     else:
         try:
             name = type(e).__name__
-        except Exception:
+        except:
             name = str(e).split("(")[0]
 
     return name
 
 
 def is_special_model(
-    e, all_models: Dict[str, "pycaret.containers.models.ModelContainer"]
+    e, all_models: Dict[str, "pycaret_local.containers.models.base_model.ModelContainer"]
 ) -> bool:
     try:
         return all_models[get_model_id(e, all_models)].is_special
-    except Exception:
+    except:
         return False
 
 
@@ -481,13 +441,13 @@ def np_list_arange(
     stop = stop + (step if inclusive else 0)
     range_ = list(np.arange(start, stop, step))
     range_ = [
-        (
-            start
-            if x < start
-            else (
-                stop if x > stop else float(round(x, 15)) if isinstance(x, float) else x
-            )
-        )
+        start
+        if x < start
+        else stop
+        if x > stop
+        else float(round(x, 15))
+        if isinstance(x, float)
+        else x
         for x in range_
     ]
     range_[0] = start
@@ -496,12 +456,13 @@ def np_list_arange(
 
 
 def calculate_unsupervised_metrics(
-    metrics: Dict[str, "pycaret.containers.metrics.MetricContainer"],
+    metrics: Dict[str, "pycaret_local.containers.metrics.base_metric.MetricContainer"],
     X,
     labels,
     ground_truth: Optional[Any] = None,
     score_dict: Optional[Dict[str, np.array]] = None,
 ) -> Dict[str, np.array]:
+
     score_dict = []
 
     for k, v in metrics.items():
@@ -532,7 +493,6 @@ def _calculate_unsupervised_metric(
         try:
             calculated_metric = score_func(target, labels, **container.args)
         except Exception:
-            warnings.warn(traceback.format_exc())
             calculated_metric = 0
 
     return (display_name, calculated_metric)
@@ -543,16 +503,21 @@ def get_function_params(function: Callable) -> Set[str]:
 
 
 def calculate_metrics(
-    metrics: Dict[str, "pycaret.containers.metrics.MetricContainer"],
+    metrics: Dict[str, "pycaret_local.containers.metrics.base_metric.MetricContainer"],
     y_test,
+    y_train,
+    X_test,
+    X_train,
     pred,
     pred_proba: Optional[float] = None,
     score_dict: Optional[Dict[str, np.array]] = None,
     weights: Optional[list] = None,
     **additional_kwargs,
 ) -> Dict[str, np.array]:
-    score_dict = []
 
+    score_dict = []
+    # time_test = X_test["time"].values.ravel()
+    # time_train = X_train["time"].values.ravel()
     for k, v in metrics.items():
         score_dict.append(
             _calculate_metric(
@@ -560,6 +525,9 @@ def calculate_metrics(
                 v.score_func,
                 v.display_name,
                 y_test,
+                y_train,
+                X_test,
+                X_train,
                 pred,
                 pred_proba,
                 weights,
@@ -571,32 +539,51 @@ def calculate_metrics(
     return score_dict
 
 
-def _calculate_metric(
-    container, score_func, display_name, y_test, pred_, pred_proba, weights, **kwargs
-):
+def _calculate_metric(container,
+                      score_func,
+                      display_name,
+                      y_test,
+                      y_train,
+                      X_test,
+                      X_train,
+                      pred_,
+                      pred_proba,
+                      weights,
+                      **kwargs):
     if not score_func:
         return None
     # get all kwargs in additional_kwargs
     # that correspond to parameters in function signature
-    kwargs = {
-        **{k: v for k, v in kwargs.items() if k in get_function_params(score_func)},
-        **container.args,
-    }
+    # kwargs = {
+    #     **{k: v for k, v in kwargs.items() if k in get_function_params(score_func)},
+    #     **container.args,
+    # }
+
     target = pred_proba if container.target == "pred_proba" else pred_
     try:
-        calculated_metric = score_func(y_test, target, sample_weight=weights, **kwargs)
-    except Exception:
+        class_name = get_class_name(container.score_func)
+        calculated_metric = score_func(y_test,
+                                       y_train,
+                                       X_train,
+                                       X_test,
+                                       target,
+                                       sample_weight=weights, **kwargs)
+    except:
         try:
-            calculated_metric = score_func(y_test, target, **kwargs)
-        except Exception:
-            warnings.warn(traceback.format_exc())
+            calculated_metric = score_func(y_test,
+                                           y_train,
+                                           X_train,
+                                           X_test,
+                                           target,
+                                           **kwargs)
+        except:
             calculated_metric = 0
 
     return display_name, calculated_metric
 
 
 def normalize_custom_transformers(
-    transformers: Union[Any, Tuple[str, Any], List[Any], List[Tuple[str, Any]]],
+    transformers: Union[Any, Tuple[str, Any], List[Any], List[Tuple[str, Any]]]
 ) -> list:
     if isinstance(transformers, dict):
         transformers = list(transformers.items())
@@ -693,7 +680,7 @@ def get_cv_splitter(
                 default_copy = deepcopy(default)
                 default_copy.n_splits = fold
                 return default_copy
-            except Exception:
+            except:
                 raise ValueError(f"Couldn't set 'n_splits' to {fold} for {default}.")
         else:
             fold_seed = seed if shuffle else None
@@ -756,7 +743,7 @@ class set_n_jobs(object):
                 for k, v in self.model.get_params().items()
                 if k.endswith("n_jobs") or k.endswith("thread_count")
             }
-        except Exception:
+        except:
             pass
 
     def __enter__(self):
@@ -782,7 +769,7 @@ class true_warm_start(object):
                 for k, v in self.model.get_params().items()
                 if k.endswith("warm_start")
             }
-        except Exception:
+        except:
             pass
 
     def __enter__(self):
@@ -806,30 +793,21 @@ class nullcontext(object):
 
 
 def get_groups(
-    groups: Union[str, pd.DataFrame],
-    X_train: pd.DataFrame,
-    default: Optional[pd.DataFrame],
-) -> Optional[pd.DataFrame]:
+    groups: Union[str, pd.DataFrame], X_train: pd.DataFrame, default: pd.DataFrame
+):
     if groups is None:
-        if default is None:
-            return default
-        else:
-            # Select rows from X_train that match the index from default (all rows)
-            return default.loc[X_train.index]
-    elif isinstance(groups, str):
+        return default
+    if isinstance(groups, str):
         if groups not in X_train.columns:
             raise ValueError(
                 f"Column {groups} used for groups is not present in the dataset."
             )
         groups = X_train[groups]
     else:
-        groups = groups.loc[X_train.index]
         if groups.shape[0] != X_train.shape[0]:
             raise ValueError(
-                f"groups has length {groups.shape[0]} which doesn't match X_train "
-                f"length of {len(X_train)}."
+                f"groups has length {groups.shape[0]} which doesn't match X_train length of {len(X_train)}."
             )
-
     return groups
 
 
@@ -852,7 +830,7 @@ def get_all_object_vars_and_properties(object):
         try:
             if k[:2] != "__" and type(getattr(object, k, "")).__name__ != "method":
                 d[k] = getattr(object, k, "")
-        except Exception:
+        except:
             pass
     return d
 
@@ -891,7 +869,7 @@ def can_early_stop(
 
     try:
         base_estimator = estimator.steps[-1][1]
-    except Exception:
+    except:
         base_estimator = estimator
 
     if consider_partial_fit:
@@ -1068,241 +1046,3 @@ def deep_clone(estimator: Any) -> Any:
     """
     estimator_ = deepcopy(estimator)
     return estimator_
-
-
-def check_metric(
-    actual: pd.Series,
-    prediction: pd.Series,
-    metric: str,
-    round: int = 4,
-    train: Optional[pd.Series] = None,
-):
-    """
-    Function to evaluate classification, regression and timeseries metrics.
-
-
-    actual : pandas.Series
-        Actual values of the target variable.
-
-
-    prediction : pandas.Series
-        Predicted values of the target variable.
-
-
-    train: pandas.Series
-        Train values of the target variable.
-
-
-    metric : str
-        Metric to use.
-
-
-    round: integer, default = 4
-        Number of decimal places the metrics will be rounded to.
-
-
-    Returns:
-        float
-
-    """
-    from pycaret.containers.metrics.classification import (
-        get_all_metric_containers as get_all_class_metric_containers,
-    )
-    from pycaret.containers.metrics.regression import (
-        get_all_metric_containers as get_all_reg_metric_containers,
-    )
-    from pycaret.containers.metrics.time_series import (
-        get_all_metric_containers as get_all_ts_metric_containers,
-    )
-
-    globals_dict = {"y": prediction}
-    metric_containers = {
-        **get_all_class_metric_containers(globals_dict),
-        **get_all_reg_metric_containers(globals_dict),
-        **get_all_ts_metric_containers(globals_dict),
-    }
-    metrics = {
-        v.name: functools.partial(v.score_func, **(v.args or {}))
-        for k, v in metric_containers.items()
-    }
-
-    if isinstance(train, pd.Series):
-        input_params = [actual, prediction, train]
-    else:
-        input_params = [actual, prediction]
-
-    # metric calculation starts here
-
-    if metric in metrics:
-        try:
-            result = metrics[metric](*input_params)
-        except Exception:
-            from sklearn.preprocessing import LabelEncoder
-
-            le = LabelEncoder()
-            actual = le.fit_transform(actual)
-            prediction = le.transform(prediction)
-            result = metrics[metric](actual, prediction)
-        result = np.around(result, round)
-        return float(result)
-    else:
-        raise ValueError(
-            f"Couldn't find metric '{metric}' Possible metrics are: {', '.join(metrics.keys())}."
-        )
-
-
-def _get_metrics_dict(
-    metrics_dict: Dict[str, Union[str, _Scorer]],
-) -> Dict[str, _Scorer]:
-    """Returns a metrics dictionary in which all values are callables
-    of type _PredictScorer
-
-    Parameters
-    ----------
-    metrics_dict : A metrics dictionary in which some values can be strings.
-        If the value is a string, the corresponding callable metric is returned
-        e.g. Dictionary Value of 'neg_mean_absolute_error' will return
-        make_scorer(mean_absolute_error, greater_is_better=False)
-    """
-    return_metrics_dict = {}
-    for k, v in metrics_dict.items():
-        if isinstance(v, str):
-            return_metrics_dict[k] = get_scorer(v)
-        else:
-            return_metrics_dict[k] = v
-    return return_metrics_dict
-
-
-def enable_colab():
-    # TODO: Remove with pycaret v3.2.1
-    warnings.warn(
-        "This function is no longer necessary in pycaret>=3.0 "
-        "and will be removed with release 3.2.1",
-        DeprecationWarning,
-    )
-
-
-def get_system_logs():
-    """
-    Read and print 'logs.log' file from current active directory
-    """
-
-    with open("logs.log", "r") as file:
-        lines = file.read().splitlines()
-
-    for line in lines:
-        if not line:
-            continue
-
-        columns = [col.strip() for col in line.split(":") if col]
-        print(columns)
-
-
-def _coerce_empty_dataframe_to_none(
-    data: Optional[pd.DataFrame],
-) -> Optional[pd.DataFrame]:
-    """Returns None if the data is an empty dataframe or None,
-    else return the dataframe as is.
-
-    Parameters
-    ----------
-    data : Optional[pd.DataFrame]
-        Dataframe to be checked or None
-
-    Returns
-    -------
-    Optional[pd.DataFrame]
-        Returned Dataframe OR None (if dataframe is empty or None)
-    """
-    if isinstance(data, pd.DataFrame) and data.empty:
-        return None
-    else:
-        return data
-
-
-def _resolve_dict_keys(
-    dict_: Dict[str, Any], key: str, defaults: Dict[str, Any]
-) -> Any:
-    """Returns the value of "key" from `dict`. If key is not present, then the
-    value is picked from the `defaults` dictionary. Note that `defaults` must
-    contain the `key` else this will give an error.
-
-    Parameters
-    ----------
-    dict : Dict[str, Any]
-        The dictionary from which the "key"'s value must be obtained
-    key : str
-        The "key" whose value must be obtained
-    defaults : Dict[str, Any]
-        The dictionary containing the default value of the "key"
-
-    Returns
-    -------
-    Any
-        The value of the "key"
-
-    Raises
-    ------
-    KeyError
-        If the `defaults` dictionary does not contain the `key`
-    """
-    if key not in defaults:
-        raise KeyError(f"Key '{key}' not present in Defaults dictionary.")
-    return dict_.get(key, defaults[key])
-
-
-def get_allowed_engines(
-    estimator: str, all_allowed_engines: Dict[str, List[str]]
-) -> Optional[List[str]]:
-    """Get all the allowed engines for the specified estimator
-
-    Parameters
-    ----------
-    estimator : str
-        Identifier for the model for which the engines should be retrieved,
-        e.g. "auto_arima"
-    all_allowed_engines : Dict[str, List[str]]
-        All allowed engines for models of this experiment class to which the
-        model belongs
-
-    Returns
-    -------
-    Optional[List[str]]
-        The allowed engines for the model. If the model only supports the
-        default engine, then it return `None`.
-    """
-    allowed_engines = all_allowed_engines.get(estimator, None)
-    return allowed_engines
-
-
-class LazyExperimentMapping(Mapping):
-    """
-    This class provides a dict-like interface while calling properties lazily.
-
-    This improves performance if those properties are not accessed.
-    """
-
-    def __init__(self, experiment: "_PyCaretExperiment"):
-        self._experiment = experiment
-        self._keys = self._experiment._variable_keys.union(
-            self._experiment._property_keys
-        )
-        if "variables" in self._keys:
-            self._keys.remove("variables")
-        self._cache = {}
-
-    def __getitem__(self, key):
-        if key in self._cache:
-            return self._cache[key]
-        if key in self._keys:
-            item = getattr(self._experiment, key, None)
-            self._cache[key] = item
-            return item
-        else:
-            raise KeyError(key)
-
-    def __len__(self):
-        return len(self._keys)
-
-    def __iter__(self):
-        return iter(self._keys)
