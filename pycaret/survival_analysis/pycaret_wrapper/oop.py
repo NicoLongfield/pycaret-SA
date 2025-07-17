@@ -139,13 +139,15 @@ class SurvivalExperiment(_SupervisedExperiment, Preprocessor):
     @property
     def X_train(self):
         """Feature set of the training set."""
-        X_train = self.train.drop([self.target_param, 'time'], axis=1, errors='ignore')
+        # For survival analysis, we need to keep the time column in the features
+        X_train = self.train.drop([self.target_param], axis=1, errors='ignore')
         return X_train
 
     @property
     def X_test(self):
         """Feature set of the test set."""
-        X_test = self.test.drop([self.target_param, 'time'], axis=1, errors='ignore')
+        # For survival analysis, we need to keep the time column in the features
+        X_test = self.test.drop([self.target_param], axis=1, errors='ignore')
         return X_test
 
     @property
@@ -156,7 +158,7 @@ class SurvivalExperiment(_SupervisedExperiment, Preprocessor):
     @property
     def test_transformed(self):
         """Transformed test set."""
-        return self.dataset_transformed.loc[self.idx[1], :]
+        return pd.concat([self.X_test_transformed, self.y_test_transformed], axis=1)
 
     @property
     def X_transformed(self):
@@ -878,7 +880,9 @@ class SurvivalExperiment(_SupervisedExperiment, Preprocessor):
         self.time_range = np.arange(lower, upper)
 
         
-        self._X = self.data.drop(columns=[self.target_param, "time"])
+        # For survival analysis, we need to keep the time column in the features
+        # Only drop the event column (target)
+        self._X = self.data.drop(columns=[self.target_param])
 
 
 
@@ -1028,8 +1032,8 @@ class SurvivalExperiment(_SupervisedExperiment, Preprocessor):
         print("[DEBUG] y_transformed type:", type(self.y_transformed))
         print("[DEBUG] y_transformed:", self.y_transformed)
         print("[DEBUG] target argument:", target)
-        # if self.X_transformed is None or self.y_transformed is None:
-        #     raise ValueError("X_transformed or y_transformed is None. Check preprocessing steps.")
+        if self.X_transformed is None or self.y_transformed is None:
+            raise ValueError("X_transformed or y_transformed is None. Check preprocessing steps.")
         # if 'time' not in self.X_transformed.columns:
         #     raise ValueError("'time' column not found in X_transformed. Check your target and keep_features settings. Columns: {}".format(self.X_transformed.columns.tolist()))
         self.survival_train = Surv.from_arrays(event=self.y_transformed, time=self.X_transformed['time'])
