@@ -99,6 +99,21 @@ class Pipeline(imblearn.pipeline.Pipeline):
     def feature_names_in_(self):
         return self._feature_names_in
 
+    @property
+    def _estimator_type(self):
+        # Override the estimator type to None for survival analysis pipelines
+        # This prevents sklearn from treating the pipeline as a regressor
+        if hasattr(self._final_estimator, '_estimator_type'):
+            return self._final_estimator._estimator_type
+        return None
+    
+    def _check_response_method(self, response_method):
+        """Override sklearn's response method check for survival models."""
+        if response_method == "predict_survival_function":
+            if hasattr(self._final_estimator, "predict_survival_function"):
+                return True
+        return response_method == "predict"
+
     def _iter(self, with_final=True, filter_passthrough=True, filter_train_only=True):
         """Generate (idx, name, trans) tuples from self.steps.
 
@@ -161,9 +176,6 @@ class Pipeline(imblearn.pipeline.Pipeline):
 
     def fit(self, X=None, y=None, **fit_params):
         fit_params_steps = self._check_fit_params(**fit_params)
-        print("Fitting pipeline with fit_params_steps:", fit_params_steps)
-        print("Initial X shape:", X.shape if X is not None else "None")
-        print("Initial y shape:", y.shape if y is not None else "None")
         X, y, _ = self._fit(X, y, **fit_params_steps)
         with _print_elapsed_time("Pipeline", self._log_message(len(self.steps) - 1)):
             if self._final_estimator != "passthrough":
@@ -234,8 +246,19 @@ class Pipeline(imblearn.pipeline.Pipeline):
 
         return self.steps[-1][-1].score(X, y, **self._kwargs)#, survival_train=self.survival_train)
 
+    # @if_delegate_has_method(delegate="_final_estimator")
+    def predict_survival_function(self, X, **predict_params):
+        """Predict survival function for survival analysis models."""
+        for _, _, transformer in self._iter(with_final=False):
+            X, _ = _transform_one(transformer, X, None)
+
+        return self.steps[-1][-1].predict_survival_function(X, **predict_params)
+
     def __getattr__(self, name: str):
         # override getattr to allow grabbing of final estimator attrs
+        if name == '_estimator_type':
+            # Always return None for survival analysis pipelines
+            return None
         return getattr(self._final_estimator, name)
 
     def _clear_final_estimator_fit_vars(self, all: bool = False):

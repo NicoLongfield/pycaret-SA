@@ -208,6 +208,11 @@ class SurvivalExperiment(_SupervisedExperiment, Preprocessor):
         """Transformed training set."""
         return pd.concat([self.X_train_transformed, self.y_train_transformed], axis=1)
 
+    @property
+    def _is_multiclass(self):
+        """Check if this is a multiclass problem. Always False for survival analysis."""
+        return False
+
     def _get_models(self, raise_errors: bool = True) -> Tuple[dict, dict]:
         all_models = {
             k: v
@@ -4371,17 +4376,31 @@ class SurvivalExperiment(_SupervisedExperiment, Preprocessor):
 
                     warnings.simplefilter("ignore", UserWarning)
                     warnings.simplefilter("ignore", FitFailedWarning)
-                    estimated_alphas = temp_model.alphas_
+                    estimated_alphas = temp_model.alphas_ if hasattr(temp_model, "alphas_") else np.logspace(np.log10(getattr(temp_model, "alpha", 1.0)/10), np.log10(getattr(temp_model, "alpha", 1.0)*10), 10)
                     cv_temp = KFold(n_splits=5, shuffle=True, random_state=0)
+                    
+                    # Get the base class name (e.g., "ipcridge" for IPCRidge)
+                    base_class = temp_model.__class__.__bases__[-1]()
+                    base_class_name = base_class.__class__.__name__.lower()
+                    
+                    # Determine the correct parameter name
+                    if hasattr(temp_model, 'alphas_'):
+                        # For models with multiple alphas (like ElasticNet, CoxNet)
+                        param_name = base_class_name + "__alphas"
+                        param_values = [[v] for v in estimated_alphas]
+                    else:
+                        # For models with single alpha (like IPCRidge)
+                        param_name = base_class_name + "__alpha"
+                        param_values = estimated_alphas
+                    
                     gcv = GridSearchCV(
-                        make_pipeline(StandardScaler(), temp_model.__class__.__bases__[-1]()),
-                        param_grid={temp_model.__class__.__bases__[-1].__name__.lower() + "__alphas": [[v] for v in
-                                                                                                       estimated_alphas]},
+                        make_pipeline(StandardScaler(), base_class),
+                        param_grid={param_name: param_values},
                         cv=cv_temp,
                         error_score=0.5,
                         n_jobs=1).fit(Xt, y)
 
-                    best_model = gcv.best_estimator_.named_steps[temp_model.__class__.__bases__[-1].__name__.lower()]
+                    best_model = gcv.best_estimator_.named_steps[base_class_name]
                     best_coefs = pd.DataFrame(
                         best_model.coef_,
                         index=[column for column in self.X_train_transformed.columns if column != "time"],
@@ -4472,20 +4491,42 @@ class SurvivalExperiment(_SupervisedExperiment, Preprocessor):
 
                     warnings.simplefilter("ignore", UserWarning)
                     warnings.simplefilter("ignore", FitFailedWarning)
-                    estimated_alphas = temp_model.alphas_
+                    estimated_alphas = temp_model.alphas_ if hasattr(temp_model, "alphas_") else np.logspace(np.log10(getattr(temp_model, "alpha", 1.0)/10), np.log10(getattr(temp_model, "alpha", 1.0)*10), 10)
                     cv_temp = KFold(n_splits=5, shuffle=True, random_state=0)
+                    
+                    # Get the base class name (e.g., "ipcridge" for IPCRidge)
+                    base_class = temp_model.__class__.__bases__[-1]()
+                    base_class_name = base_class.__class__.__name__.lower()
+                    
+                    # Determine the correct parameter name
+                    if hasattr(temp_model, 'alphas_'):
+                        # For models with multiple alphas (like ElasticNet, CoxNet)
+                        param_name = base_class_name + "__alphas"
+                        param_values = [[v] for v in estimated_alphas]
+                    else:
+                        # For models with single alpha (like IPCRidge)
+                        param_name = base_class_name + "__alpha"
+                        param_values = estimated_alphas
+                    
                     gcv = GridSearchCV(
-                        make_pipeline(StandardScaler(), temp_model.__class__.__bases__[-1]()),
-                        param_grid={temp_model.__class__.__bases__[-1].__name__.lower() + "__alphas": [[v] for v in
-                                                                                                       estimated_alphas]},
+                        make_pipeline(StandardScaler(), base_class),
+                        param_grid={param_name: param_values},
                         cv=cv_temp,
                         error_score=0.5,
                         n_jobs=1).fit(Xt, y)
                     cv_results = pd.DataFrame(gcv.cv_results_)
-                    alphas = pd.Series(gcv.cv_results_['param_' + temp_model.__class__.__bases__[
-                        -1].__name__.lower() + "__alphas"]).map(lambda x: x[0])
+                    
+                    # Get the parameter results
+                    if hasattr(temp_model, 'alphas_'):
+                        alphas = pd.Series(gcv.cv_results_['param_' + param_name]).map(lambda x: x[0])
+                    else:
+                        alphas = pd.Series(gcv.cv_results_['param_' + param_name])
+                    
+                    # Ensure alphas are numeric
+                    alphas = pd.to_numeric(alphas)
                     mean = cv_results.mean_test_score
                     std = cv_results.std_test_score
+                    
                     with MatplotlibDefaultDPI(base_dpi=_base_dpi, scale_to_set=scale):
                         fig, ax = plt.subplots(figsize=(9, 6))
                         ax.plot(alphas, mean)
@@ -4493,9 +4534,16 @@ class SurvivalExperiment(_SupervisedExperiment, Preprocessor):
                         ax.set_xscale("log")
                         ax.set_ylabel("concordance index")
                         ax.set_xlabel("alpha")
-                        ax.axvline(
-                            gcv.best_params_[temp_model.__class__.__bases__[-1].__name__.lower() + "__alphas"][0],
-                            c="C1")
+                        
+                        # Get the best parameter value
+                        if hasattr(temp_model, 'alphas_'):
+                            best_param_key = param_name
+                            best_alpha = gcv.best_params_[best_param_key][0]
+                        else:
+                            best_param_key = param_name
+                            best_alpha = gcv.best_params_[best_param_key]
+                            
+                        ax.axvline(best_alpha, c="C1")
                         ax.axhline(0.5, color="grey", linestyle="--")
                         ax.grid(True)
                         # plt.title("C-Index Plot")
@@ -4522,7 +4570,7 @@ class SurvivalExperiment(_SupervisedExperiment, Preprocessor):
                         coefs = pd.DataFrame(
                             temp_model.coef_,
                             index=[column for column in self.X_train_transformed.columns if column != "time"],
-                            columns=np.round(temp_model.alphas_, 5)
+                            columns=np.round(temp_model.alphas_, 5) if hasattr(temp_model, "alphas_") else [getattr(temp_model, "alpha", 1.0)]
                         )
                         _, ax = plt.subplots(figsize=(8, 5), dpi=_base_dpi * scale)
                         n_features = coefs.shape[0]
@@ -4568,7 +4616,7 @@ class SurvivalExperiment(_SupervisedExperiment, Preprocessor):
                         coefs = pd.DataFrame(
                             temp_model.coef_,
                             index=[column for column in self.X_train_transformed.columns if column != "time"],
-                            columns=np.round(temp_model.alphas_, 5)
+                            columns=np.round(temp_model.alphas_, 5) if hasattr(temp_model, "alphas_") else [getattr(temp_model, "alpha", 1.0)]
                         )
                         _, ax = plt.subplots(figsize=(8, 5), dpi=_base_dpi * scale)
                         n_features = coefs.shape[0]

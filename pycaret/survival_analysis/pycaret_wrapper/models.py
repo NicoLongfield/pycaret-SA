@@ -262,8 +262,18 @@ class IPCRidgeWrapper(IPCRidge):
         self.max_iter = max_iter
         self.tol = tol
         self.solver = solver
+        # Set estimator type to None to avoid sklearn trying to categorize it
+        self._estimator_type = None
         # Ignore any additional keyword arguments passed by PyCaret
         super(IPCRidge, self).__init__()
+
+    def _more_tags(self):
+        return {'allow_multiclass': False, 'allow_multilabel': False, 'requires_survival': True}
+        
+    def _get_tags(self):
+        tags = super()._get_tags() if hasattr(super(), '_get_tags') else {}
+        tags.update(self._more_tags())
+        return tags
 
     def fit(self, X: pd.DataFrame, y: pd.DataFrame):
         y_time = X["time"].values.ravel()
@@ -273,6 +283,11 @@ class IPCRidgeWrapper(IPCRidge):
 
     def predict(self, X: pd.DataFrame, alpha: Optional[float] = None):
         return super().predict(X.loc[:, X.columns != 'time'])
+
+    def predict_survival_function(self, X: pd.DataFrame, alpha: Optional[float] = None):
+        # IPCRidge doesn't natively support survival function prediction
+        # Return None to indicate this method is not available
+        return None
 
     def score(self, X, y):
         y_time = X["time"].values.ravel()
@@ -386,6 +401,8 @@ class CoxPHWrapper(CoxPHSurvivalAnalysis):
         self.n_iter = n_iter
         self.tol = tol
         self.verbose = verbose
+        # Set estimator type to None to avoid sklearn trying to categorize it
+        self._estimator_type = None
 
         self._baseline_model = BreslowEstimator()
 
@@ -399,6 +416,9 @@ class CoxPHWrapper(CoxPHSurvivalAnalysis):
 
     def predict(self, X: pd.DataFrame, alpha: Optional[float] = None):
         return super().predict(X.loc[:, X.columns != 'time'])
+
+    def predict_survival_function(self, X: pd.DataFrame, alpha: Optional[float] = None):
+        return super().predict_survival_function(X.loc[:, X.columns != 'time'])
 
     def score(self, X, y):
         y_time = X["time"].values.ravel()
@@ -522,7 +542,7 @@ class CoxNetWrapper(CoxnetSurvivalAnalysis):
                  alpha_min_ratio: str = "auto", l1_ratio: float = 0.5,
                  penalty_factor: Optional[List[float]] = None, normalize: bool = False,
                  copy_X: bool = True, tol: float = 1e-7, max_iter: int = 100000,
-                 verbose: bool = False, fit_baseline_model: bool = True, prediction_function: str = "survival"):
+                 verbose: bool = False, fit_baseline_model: bool = True, prediction_function: str = "survival", **kwargs):
 
         self.n_alphas = n_alphas
         self.alphas = alphas
@@ -536,6 +556,8 @@ class CoxNetWrapper(CoxnetSurvivalAnalysis):
         self.verbose = verbose
         self.fit_baseline_model = fit_baseline_model
         self.prediction_function = prediction_function
+        # Set estimator type to None to avoid sklearn trying to categorize it
+        self._estimator_type = None
 
         super(CoxnetSurvivalAnalysis, self).__init__()
                     # self, n_alphas=self.n_alphas, alphas=self.alphas,
@@ -545,6 +567,14 @@ class CoxNetWrapper(CoxnetSurvivalAnalysis):
                     # verbose=self.verbose, fit_baseline_model=self.fit_baseline_model)
     # def __init__(self, model: Any, **kwargs):
     #     self.model = model(**kwargs)
+
+    def __init__(self, **kwargs):
+        # Filter out any extra kwargs that the parent class doesn't accept
+        # Remove common sklearn parameters that aren't relevant for survival models
+        filtered_kwargs = {k: v for k, v in kwargs.items() if k not in ['error_score']}
+        
+        # Pass the filtered kwargs to the parent class
+        super().__init__(**filtered_kwargs)
 
     def fit(self, X: pd.DataFrame, y: pd.DataFrame):
         y_time = X["time"].values.ravel()
@@ -561,12 +591,19 @@ class CoxNetWrapper(CoxnetSurvivalAnalysis):
         return super().score(X, y_surv)
 
 
-    #
-    # def predict_survival_function(self, X: pd.DataFrame, alpha: Optional[float]=None):
-    #     return super().predict_survival_function(X, alpha)
-    #
-    # def predict_cumulative_hazard_function(self, X: pd.DataFrame, alpha: Optional[float]=None):
-    #     return super().predict_cumulative_hazard_function(X, alpha)
+    def predict_survival_function(self, X: pd.DataFrame, alpha: Optional[float] = None):
+        if hasattr(super(), 'predict_survival_function'):
+            return super().predict_survival_function(X.loc[:, X.columns != 'time'], alpha)
+        else:
+            # If the method doesn't exist, return None
+            return None
+    
+    def predict_cumulative_hazard_function(self, X: pd.DataFrame, alpha: Optional[float] = None):
+        if hasattr(super(), 'predict_cumulative_hazard_function'):
+            return super().predict_cumulative_hazard_function(X.loc[:, X.columns != 'time'], alpha)
+        else:
+            # If the method doesn't exist, return None
+            return None
 
     #
     # def _pre_fit(self, X, y):
