@@ -814,7 +814,12 @@ class SurvivalTreeWrapper(SurvivalTree):
                  min_weight_fraction_leaf=0.,
                  max_features=None,
                  random_state=None,
-                 max_leaf_nodes=None):
+                 max_leaf_nodes=None,
+                 **kwargs):
+        # Filter out any extra kwargs that the parent class doesn't accept
+        # Remove common sklearn parameters that aren't relevant for survival trees
+        filtered_kwargs = {k: v for k, v in kwargs.items() if k not in ['error_score']}
+        
         self.splitter = splitter
         self.max_depth = max_depth
         self.min_samples_split = min_samples_split
