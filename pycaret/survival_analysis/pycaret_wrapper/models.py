@@ -1040,7 +1040,7 @@ class RandomSurvivalForestWrapper(RandomSurvivalForest):
                  min_samples_split=6,
                  min_samples_leaf=3,
                  min_weight_fraction_leaf=0.,
-                 max_features="auto",
+                 max_features="sqrt",
                  max_leaf_nodes=None,
                  bootstrap=True,
                  oob_score=False,
@@ -1048,7 +1048,11 @@ class RandomSurvivalForestWrapper(RandomSurvivalForest):
                  random_state=None,
                  verbose=0,
                  warm_start=False,
-                 max_samples=None):
+                 max_samples=None,
+                 **kwargs):
+        # Filter out any extra kwargs that the parent class doesn't accept
+        filtered_kwargs = {k: v for k, v in kwargs.items() if k not in ['error_score']}
+        
         self.max_depth = max_depth
         self.min_samples_split = min_samples_split
         self.min_samples_leaf = min_samples_leaf
@@ -1252,7 +1256,7 @@ class ExtraSurvivalTreesWrapper(ExtraSurvivalTrees):
                  min_samples_split=6,
                  min_samples_leaf=3,
                  min_weight_fraction_leaf=0.,
-                 max_features="auto",
+                 max_features="sqrt",
                  max_leaf_nodes=None,
                  bootstrap=True,
                  oob_score=False,
@@ -1260,8 +1264,12 @@ class ExtraSurvivalTreesWrapper(ExtraSurvivalTrees):
                  random_state=None,
                  verbose=0,
                  warm_start=False,
-                 max_samples=None):
+                 max_samples=None,
+                 **kwargs):
 
+        # Filter out any extra kwargs that the parent class doesn't accept
+        filtered_kwargs = {k: v for k, v in kwargs.items() if k not in ['error_score']}
+        
         self.max_depth = max_depth
         self.min_samples_split = min_samples_split
         self.min_samples_leaf = min_samples_leaf
@@ -1496,7 +1504,11 @@ class GradientBoostingSurvivalWrapper(GradientBoostingSurvivalAnalysis):
                  max_features=None, max_leaf_nodes=None,
                  subsample=1.0, dropout_rate=0.0,
                  verbose=0,
-                 ccp_alpha=0.0):
+                 ccp_alpha=0.0,
+                 **kwargs):
+        # Filter out any extra kwargs that the parent class doesn't accept
+        filtered_kwargs = {k: v for k, v in kwargs.items() if k not in ['error_score']}
+        
         self.loss = loss
         self.learning_rate = learning_rate
         self.n_estimators = n_estimators
@@ -1673,7 +1685,10 @@ class ComponentWiseGradientBoostingSurvivalWrapper(ComponentwiseGradientBoosting
         """
 
     def __init__(self, loss="coxph", learning_rate=0.1, n_estimators=100, subsample=1.0,
-                 dropout_rate=0, random_state=None, verbose=0):
+                 dropout_rate=0, random_state=None, verbose=0, **kwargs):
+        # Filter out any extra kwargs that the parent class doesn't accept
+        filtered_kwargs = {k: v for k, v in kwargs.items() if k not in ['error_score']}
+        
         self.loss = loss
         self.n_estimators = n_estimators
         self.learning_rate = learning_rate
@@ -1849,7 +1864,10 @@ class HingeLossSVMSurvivalWrapper(HingeLossSurvivalSVM):
 
     def __init__(self, solver="ecos",
                  alpha=1.0, kernel="linear", gamma=None, degree=3, coef0=1, kernel_params=None,
-                 pairs="all", verbose=False, timeit=None, max_iter=None):
+                 pairs="all", verbose=False, timeit=None, max_iter=None, **kwargs):
+        # Filter out any extra kwargs that the parent class doesn't accept
+        filtered_kwargs = {k: v for k, v in kwargs.items() if k not in ['error_score']}
+        
         self.solver = solver
         self.alpha = alpha
         self.kernel = kernel
@@ -1991,7 +2009,10 @@ class FastKernelSVMSurvivalWrapper(FastKernelSurvivalSVM):
 
     def __init__(self, alpha=1, rank_ratio=1.0, fit_intercept=False, kernel="rbf",
                  gamma=None, degree=3, coef0=1, kernel_params=None, max_iter=20, verbose=False, tol=None,
-                 optimizer=None, random_state=None, timeit=False):
+                 optimizer=None, random_state=None, timeit=False, **kwargs):
+        # Filter out any extra kwargs that the parent class doesn't accept
+        filtered_kwargs = {k: v for k, v in kwargs.items() if k not in ['error_score']}
+        
         super().__init__(alpha=alpha, rank_ratio=rank_ratio, fit_intercept=fit_intercept,
                          max_iter=max_iter, verbose=verbose, tol=tol,
                          optimizer=optimizer, random_state=random_state,
@@ -2105,7 +2126,10 @@ class FastSVMSurvivalWrapper(FastSurvivalSVM):
     """
     def __init__(self, alpha=1, rank_ratio=1.0, fit_intercept=False,
                  max_iter=20, verbose=False, tol=None,
-                 optimizer=None, random_state=None, timeit=False):
+                 optimizer=None, random_state=None, timeit=False, **kwargs):
+        # Filter out any extra kwargs that the parent class doesn't accept
+        filtered_kwargs = {k: v for k, v in kwargs.items() if k not in ['error_score']}
+        
         super().__init__(alpha=alpha, rank_ratio=rank_ratio, fit_intercept=fit_intercept,
                          max_iter=max_iter, verbose=verbose, tol=tol,
                          optimizer=optimizer, random_state=random_state,
@@ -2242,7 +2266,10 @@ class MinlipSVMSurvivalWrapper(MinlipSurvivalAnalysis):
 
     def __init__(self, solver="ecos",
                  alpha=1.0, kernel="linear", gamma=None, degree=3, coef0=1, kernel_params=None,
-                 pairs="nearest", verbose=False, timeit=None, max_iter=None):
+                 pairs="nearest", verbose=False, timeit=None, max_iter=None, **kwargs):
+        # Filter out any extra kwargs that the parent class doesn't accept
+        filtered_kwargs = {k: v for k, v in kwargs.items() if k not in ['error_score']}
+        
         self.solver = solver
         self.alpha = alpha
         self.kernel = kernel
@@ -2362,7 +2389,10 @@ class NaiveSVMSurvivalWrapper(NaiveSurvivalSVM):
        """
 
     def __init__(self, penalty='l2', loss='squared_hinge', dual=False, tol=1e-4,
-                 alpha=1.0, verbose=0, random_state=None, max_iter=1000):
+                 alpha=1.0, verbose=0, random_state=None, max_iter=1000, **kwargs):
+        # Filter out any extra kwargs that the parent class doesn't accept
+        filtered_kwargs = {k: v for k, v in kwargs.items() if k not in ['error_score']}
+        
         super().__init__(penalty=penalty,
                          loss=loss,
                          dual=dual,

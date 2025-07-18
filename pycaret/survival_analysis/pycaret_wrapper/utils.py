@@ -550,6 +550,7 @@ def _calculate_metric(container,
                       pred_proba,
                       weights,
                       **kwargs):
+    print(f"_calculate_metric called for {display_name}")
     if not score_func:
         return None
     # get all kwargs in additional_kwargs
@@ -562,13 +563,18 @@ def _calculate_metric(container,
     target = pred_proba if container.target == "pred_proba" else pred_
     try:
         class_name = get_class_name(container.score_func)
+        print(f"  -> Calling score_func for {display_name} with class_name {class_name}")
+        print(f"  -> score_func type: {type(score_func)}")
+        print(f"  -> kwargs keys: {list(kwargs.keys())}")
         calculated_metric = score_func(y_test,
                                        y_train,
                                        X_train,
                                        X_test,
                                        target,
                                        sample_weight=weights, **kwargs)
-    except:
+        print(f"  -> {display_name} calculated_metric (try1): {calculated_metric}")
+    except Exception as e:
+        print(f"  -> {display_name} try1 failed: {e}")
         try:
             calculated_metric = score_func(y_test,
                                            y_train,
@@ -576,7 +582,9 @@ def _calculate_metric(container,
                                            X_test,
                                            target,
                                            **kwargs)
-        except:
+            print(f"  -> {display_name} calculated_metric (try2): {calculated_metric}")
+        except Exception as e2:
+            print(f"  -> {display_name} try2 failed: {e2}")
             calculated_metric = 0
 
     return display_name, calculated_metric

@@ -207,8 +207,7 @@ class SurvScorer(_Scorer):
         -------
         score : float
             Score function applied to prediction of estimator on X.
-        """
-
+        """        
         y_time = X["time"].values.ravel()
         survival_test = Surv.from_arrays(event=y, time=y_time)
         estimate = method_caller(estimator, "predict", X)
@@ -231,8 +230,68 @@ class SurvScorer(_Scorer):
             score_tuple = self._score_func(survival_train_for_score, survival_test, estimate)
             score = self._sign * score_tuple[0]  # Extract the C-index from the tuple
 
+        elif self._score_func.__name__ == "integrated_brier_score":
+            # Handle IBS metric
+            try:
+                # print(f"  -> SurvScorer handling IBS")
+                survival_train_for_score = Surv.from_arrays(event=train_event, time=train_time)
+                
+                # Get survival function predictions if estimator supports it
+                if hasattr(estimator, 'predict_survival_function'):
+                    # print(f"  -> SurvScorer calling predict_survival_function")
+                    pred_surv = estimator.predict_survival_function(X)
+                    prob_surv = np.row_stack([
+                        fn(prob_time) for fn in pred_surv
+                    ])
+                    score_value = self._score_func(survival_train_for_score, survival_test, prob_surv, prob_time)
+                    score = self._sign * score_value
+                    # print(f"  -> SurvScorer IBS score: {score}")
+                else:
+                    # Fallback for models without survival function
+                    # print(f"  -> SurvScorer: model doesn't have predict_survival_function")
+                    score = np.nan
+            except Exception as e:
+                # print(f"IBS calculation error in SurvScorer: {e}")
+                score = np.nan
+
+        elif self._score_func.__name__ == "cumulative_dynamic_auc":
+            # Handle CAUC metric
+            try:
+                # print(f"  -> SurvScorer handling CAUC")
+                survival_train_for_score = Surv.from_arrays(event=train_event, time=train_time)
+                
+                # Get hazard function predictions if estimator supports it
+                if hasattr(estimator, 'predict_cumulative_hazard_function'):
+                    # print(f"  -> SurvScorer calling predict_cumulative_hazard_function")
+                    pred_hazard = estimator.predict_cumulative_hazard_function(X)
+                    prob_hazard = np.row_stack([
+                        fn(prob_time) for fn in pred_hazard
+                    ])
+                    score_tuple = self._score_func(survival_train_for_score, survival_test, prob_hazard, prob_time)
+                    score = self._sign * score_tuple[1]  # Extract the AUC from the tuple
+                    # print(f"  -> SurvScorer CAUC score: {score}")
+                elif hasattr(estimator, 'predict_survival_function'):
+                    # print(f"  -> SurvScorer calling predict_survival_function for CAUC")
+                    # Try using survival function for CAUC
+                    pred_surv = estimator.predict_survival_function(X)
+                    prob_surv = np.row_stack([
+                        fn(prob_time) for fn in pred_surv
+                    ])
+                    # Convert survival to hazard for CAUC calculation
+                    prob_hazard = 1 - prob_surv
+                    score_tuple = self._score_func(survival_train_for_score, survival_test, prob_hazard, prob_time)
+                    score = self._sign * score_tuple[1]  # Extract the AUC from the tuple
+                    # §print(f"  -> SurvScorer CAUC score: {score}")
+                else:
+                    # Fallback for models without survival function
+                    # print(f"  -> SurvScorer: model doesn't have survival/hazard functions")
+                    score = np.nan
+            except Exception as e:
+                # print(f"CAUC calculation error in SurvScorer: {e}")
+                score = np.nan
+
         else:
-            # Disable survival function calls for now to avoid pipeline issues
+            # Fallback for other metrics
             score = np.nan
 
         return score
@@ -254,6 +313,7 @@ class SkSurvScoreFuncPatch:
 
 
     def __call__(self, y_test, y_train, X_train, X_test, target, **kwargs):
+        # print(f"SkSurvScoreFuncPatch called for {self.score_func_name}")
         y_time = X_test["time"].values.ravel()
         survival_train = Surv.from_arrays(event=np.array(y_train).astype(bool), time=X_train["time"].values.ravel())
         survival_test = Surv.from_arrays(event=np.array(y_test).astype(bool), time=y_time)
