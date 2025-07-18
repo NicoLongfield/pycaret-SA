@@ -4335,10 +4335,24 @@ class SurvivalExperiment(_SupervisedExperiment, Preprocessor):
                     min_time_test = survival_test["time"].min()
                     times = np.linspace(np.ceil(min_time_test+0.01), np.floor(max_time_test-0.1), 50)
 
-                    if hasattr(estimator, "_predict_cumulative_hazard_function"):
-                        risk_scores = np.row_stack([fn(times) for fn in temp_model._predict_cumulative_hazard_function(x_test)])
-                    elif hasattr(estimator, "predict_cumulative_hazard_function"):
-                        risk_scores = np.row_stack([fn(times) for fn in temp_model.predict_cumulative_hazard_function(x_test)])
+                    # Handle different model types for cumulative hazard prediction
+                    # Check method existence without triggering the method
+                    has_predict_cumulative_hazard = "predict_cumulative_hazard_function" in dir(estimator)
+                    has_private_predict_cumulative_hazard = "_predict_cumulative_hazard_function" in dir(estimator)
+                    
+                    if has_predict_cumulative_hazard:
+                        # For models with high-level predict_cumulative_hazard_function (like CoxPH)
+                        risk_scores = np.row_stack([fn(times) for fn in temp_model.predict_cumulative_hazard_function(x_test.loc[:, x_test.columns != 'time'])])
+                    elif has_private_predict_cumulative_hazard:
+                        # For models with low-level _predict_cumulative_hazard_function (like IPCRidge)
+                        # We need to use the model's predict method to get risk scores first
+                        try:
+                            predictions = temp_model.predict(x_test.loc[:, x_test.columns != 'time'])
+                            # Use negative predictions as risk scores (higher prediction = lower risk)
+                            risk_scores = np.tile(-predictions.reshape(-1, 1), (1, len(times)))
+                        except Exception as e:
+                            self.logger.warning(f"Could not compute risk scores for cumulative hazard: {e}")
+                            return None
                     else:
                         self.logger.warning("The model does not have a predict_cumulative_hazard_function")
                         return None
